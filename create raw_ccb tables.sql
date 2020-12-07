@@ -15,18 +15,6 @@ create table raw_ccb.campus
 	longitude nvarchar (32) NULL,
 	latitude nvarchar (32) NULL,
 	country_iso nvarchar (32) NULL,
-	creator_id int NULL,
-	modifier_id int NULL,
-	created datetime NULL,
-	modified datetime NULL
-)
-
-drop table raw_ccb.campusactions;
-
-create table raw_ccb.campusactions
-(
-	id int_idENTITY (1,1),
-	campusid int NOT NULL,
 	can_administrate_checkin bool,
 	can_administrate_connect_app bool,
 	can_create_checkin_setup bool,
@@ -43,11 +31,7 @@ create table raw_ccb.campusactions
 	can_view_all_events_admin_calendar bool,
 	can_view_campus_wide_calendar bool,
 	can_view_facilities_calendar bool,
-	has_max_checkin_setups bool,
-	creator_id int NULL,
-	modifier_id int NULL,
-	created datetime NULL,
-	modified datetime NULL
+	has_max_checkin_setups bool
 )
 
 drop table raw_ccb.checkinsetup;
@@ -179,6 +163,11 @@ create table raw_ccb.individual
 	marital_status varchar(16) NULL,
 	birthday datetime NULL,
 	anniversary datetime NULL,
+	spouce_id int,
+	spouse_phone varchar(16),
+	spouse_first_name varchar(16),
+	spouse_last_name varchar(32),
+	spouse_name varchar(64),
 	baptized bool NULL,
 	deceased datetime NULL,
 	membership_type_id int NULL,
@@ -191,6 +180,9 @@ create table raw_ccb.individual
 	default_new_group_sms varchar(32) NULL,
 	privacy_settings_id int NULL,
 	active bool NULL,
+	images_thumbnail varchar(64),
+	images_large varchar(64),
+	images_medium varchar(64),
 	creator_id int NULL,
 	modifier_id int NULL,
 	created datetime NULL,
@@ -232,3 +224,179 @@ create table raw_ccb.givingtransactionsplit
 	created datetime NULL,
 	modified datetime NULL
 )
+
+create schema raw_planningcenter;
+
+drop table raw_planningcenter.person;
+
+CREATE TABLE raw_planningcenter.person(	id int,	dataId int NULL,	accounting_administrator bool NULL,	anniversary datetime NULL,	avatar nvarchar(106) NULL,	birthdate datetime NULL,	child bool NULL,	created_at datetime NULL,	demographic_avatar_url nvarchar(106) NULL,	directory_status nvarchar(29) NULL,	first_name nvarchar(28) NULL,	gender nvarchar(21) NULL,	last_name nvarchar(30) NULL,	"name" nvarchar(39) NULL,	passed_background_check bool NULL,	site_administrator bool NULL,	"status" nvarchar(26) NULL,	updated_at datetime NULL,	can_filter nvarchar(39) NULL,	can_include nvarchar(42) NULL,	can_order_by nvarchar(44) NULL,	can_query_by nvarchar(56) NULL,	"type" nvarchar(26) NULL,	primary_campusId int,	relationshipsId int NULL)
+drop table raw_planningcenter.personAddress;
+
+create table raw_planningcenter.personAddress
+(
+	id int not null,	city nvarchar(34) NULL,	created_at datetime NULL,	location nvarchar(24) NULL,	"primary" bool NULL,	state nvarchar(22) NULL,	street nvarchar(39) NULL,	updated_at datetime NULL,	zip nvarchar(25) NULL
+)
+
+drop table raw_planningcenter.personEmail;
+
+create table raw_planningcenter.personEmail
+(	id int not NULL,
+	personId int not null,	address nvarchar(43) NULL,	blocked bool NULL,	created_at datetime NULL,	location nvarchar(24) NULL,	"primary" bool NULL,	updated_at datetime NULL)exec dbo.jsonCreateTables '{
+            "type": "Email",
+            "id": "94559",
+            "attributes": {
+                "address": "jpickwell@lifepoint.org",
+                "blocked": false,
+                "created_at": "2012-09-05T01:00:45Z",
+                "location": "Home",
+                "primary": true,
+                "updated_at": "2018-10-08T17:45:23Z"
+            },
+            "relationships": {
+                "person": {
+                    "data": {
+                        "type": "Person",
+                        "id": "86051"
+                    }
+                }
+            },
+            "links": {
+                "self": "https://api.planningcenteronline.com/people/v2/emails/94559"
+            }
+        }';
+
+
+create procedure dbo.jsonCreateTables
+(
+	@JsonData nvarchar(max)
+)
+as
+/*
+This code takes a JSON input string and automatically generates
+SQL Server CREATE TABLE statements to make it easier
+to convert serialized data into a database schema.
+
+It is not perfect, but should provide a decent starting point when starting
+to work with new JSON files.
+
+A blog post with more information can be found at https://bertwagner.com/2018/05/22/converting-json-to-sql-server-create-table-statements/
+*/
+SET NOCOUNT ON;
+
+DECLARE 
+	@RootTableName nvarchar(4000) = N'AppInstance',
+	@Schema nvarchar(128) = N'dbo',
+	@DefaultStringPadding smallint = 20;
+
+DROP TABLE IF EXISTS ##parsedJson;
+WITH jsonRoot AS (
+	SELECT 
+		0 as parentLevel, 
+		CONVERT(nvarchar(4000),NULL) COLLATE Latin1_General_BIN2 as parentTableName, 
+		0 AS [level], 
+		[type] ,
+		@RootTableName COLLATE Latin1_General_BIN2 AS TableName,
+		[key] COLLATE Latin1_General_BIN2 as ColumnName,
+		[value],
+		ROW_NUMBER() OVER (ORDER BY (SELECT 1)) AS ColumnSequence
+	FROM 
+		OPENJSON(@JsonData, '$')
+	UNION ALL
+	SELECT 
+		jsonRoot.[level] as parentLevel, 
+		CONVERT(nvarchar(4000),jsonRoot.TableName) COLLATE Latin1_General_BIN2, 
+		jsonRoot.[level]+1, 
+		d.[type],
+		CASE WHEN jsonRoot.[type] IN (4,5) THEN CONVERT(nvarchar(4000),jsonRoot.ColumnName) ELSE jsonRoot.TableName END COLLATE Latin1_General_BIN2,
+		CASE WHEN jsonRoot.[type] IN (4) THEN jsonRoot.ColumnName ELSE d.[key] END,
+		d.[value],
+		ROW_NUMBER() OVER (ORDER BY (SELECT 1)) AS ColumnSequence
+	FROM 
+		jsonRoot
+		CROSS APPLY OPENJSON(jsonRoot.[value], '$') d
+	WHERE 
+		jsonRoot.[type] IN (4,5) 
+), IdRows AS (
+	SELECT 
+		-2 as parentLevel,
+		null as parentTableName,
+		-1 as [level],
+		null as [type],
+		TableName as Tablename,
+		TableName+'Id' as columnName, 
+		null as [value],
+		0 as columnsequence
+	FROM 
+		(SELECT DISTINCT tablename FROM jsonRoot) j
+), FKRows AS (
+	SELECT 
+		DISTINCT -1 as parentLevel,
+		null as parentTableName,
+		-1 as [level],
+		null as [type],
+		TableName as Tablename,
+		parentTableName+'Id' as columnName, 
+		null as [value],
+		0 as columnsequence
+	FROM 
+		(SELECT DISTINCT tableName,parentTableName FROM jsonRoot) j
+	WHERE 
+		parentTableName is not null
+)
+SELECT 
+	*,
+	CASE [type]
+		WHEN 1 THEN 
+			CASE WHEN TRY_CONVERT(datetime2, [value], 127) IS NULL THEN 'nvarchar' ELSE 'datetime2' END
+		WHEN 2 THEN 
+			CASE WHEN TRY_CONVERT(int, [value]) IS NULL THEN 'float' ELSE 'int' END
+		WHEN 3 THEN 
+			'bit'
+		END COLLATE Latin1_General_BIN2 AS DataType,
+	CASE [type]
+		WHEN 1 THEN 
+			CASE WHEN TRY_CONVERT(datetime2, [value], 127) IS NULL THEN MAX(LEN([value])) OVER (PARTITION BY TableName, ColumnName) + @DefaultStringPadding ELSE NULL END
+		WHEN 2 THEN 
+			NULL
+		WHEN 3 THEN 
+			NULL
+		END AS DataTypePrecision
+INTO ##parsedJson
+FROM jsonRoot
+WHERE 
+	[type] in (1,2,3)
+UNION ALL SELECT IdRows.parentLevel, IdRows.parentTableName, IdRows.[level], IdRows.[type], IdRows.TableName, IdRows.ColumnName, IdRows.[value], -10 AS ColumnSequence, 'int IDENTITY(1,1) PRIMARY KEY' as datatype, null as datatypeprecision FROM IdRows 
+UNION ALL SELECT FKRows.parentLevel, FKRows.parentTableName, FKRows.[level], FKRows.[type], FKRows.TableName, FKRows.ColumnName, FKRows.[value], -9 AS ColumnSequence, 'int' as datatype, null as datatypeprecision FROM FKRows 
+
+-- For debugging:
+-- SELECT * FROM ##parsedJson ORDER BY ParentLevel, level, tablename, columnsequence
+
+DECLARE @CreateStatements nvarchar(max);
+
+SELECT
+	@CreateStatements = COALESCE(@CreateStatements + CHAR(13) + CHAR(13), '') + 
+	'CREATE TABLE ' + @Schema + '.' + TableName + CHAR(13) + '(' + CHAR(13) +
+		STRING_AGG( ColumnName + ' ' + DataType + ISNULL('('+CAST(DataTypePrecision AS nvarchar(20))+')','') +  CASE WHEN DataType like '%PRIMARY KEY%' THEN '' ELSE ' NULL' END, ','+CHAR(13)) WITHIN GROUP (ORDER BY ColumnSequence) 
+	+ CHAR(13)+')'
+FROM
+	(SELECT DISTINCT 
+		j.TableName, 
+		j.ColumnName,
+		MAX(j.ColumnSequence) AS ColumnSequence, 
+		j.DataType, 
+		j.DataTypePrecision, 
+		j.[level] 
+	FROM 
+		##parsedJson j
+		CROSS APPLY (SELECT TOP 1 ParentTableName + 'Id' AS ColumnName FROM ##parsedJson p WHERE j.TableName = p.TableName ) p
+	GROUP BY
+		j.TableName, j.ColumnName,p.ColumnName, j.DataType, j.DataTypePrecision, j.[level] 
+	) j
+GROUP BY
+	TableName
+
+create table #t(sql nvarchar(max));
+insert into #t(sql) values(@CreateStatements);
+select * from #t;
+drop table #t;
+PRINT @CreateStatements;
